@@ -1,0 +1,13 @@
+# Minimum versions are my best estimate, not tested. After checking the app runs,
+# replace with exact versions:  pip freeze | grep -iE "streamlit|torch|torchvision|pandas|networkx|pillow|requests"
+streamlit>=1.37
+torch>=2.0
+torchvision>=0.15
+pandas>=2.0
+networkx>=3.0
+pillow>=10.0
+requests>=2.31
+# Notebooks only (classifier.ipynb, data_cleaning.ipynb); remove if not needed:
+# scikit-learn
+# matplotlib
+# jupyter

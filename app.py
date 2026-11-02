@@ -3,6 +3,9 @@ Trail Plant Guardian: Streamlit demo.
 Run from the project folder:  streamlit run app.py
 Needs pipeline.py, incident_log.py, plant_classifier.pth, classes.json, knowledge_graph.pkl alongside.
 """
+import hashlib
+import io
+
 import pandas as pd
 import streamlit as st
 from PIL import Image
@@ -21,6 +24,14 @@ def resources():
 
 classes, G, HOSTS = resources()
 il.init_db()
+
+NONE_OF_THESE = "None of these / I'm not sure"
+
+
+@st.cache_data(show_spinner="Identifying plant...")
+def classify(img_bytes: bytes):
+    """Run the model once per distinct photo; Streamlit reruns on every click."""
+    return p.advise_inputs(Image.open(io.BytesIO(img_bytes)))
 
 # ---------------------------------------------------------------- sidebar
 with st.sidebar:
@@ -56,12 +67,14 @@ with tab_report:
         up = st.file_uploader("Photo of the plant", type=["jpg", "jpeg", "png"])
         if up:
             st.image(Image.open(up), use_container_width=True)
+            img_bytes = up.getvalue()
+            photo_id = hashlib.md5(img_bytes).hexdigest()[:10]  # resets widgets per photo
 
     with right:
         if not up:
             st.info("Upload a photo to begin.")
         else:
-            res = p.advise_inputs(Image.open(up))
+            res = classify(img_bytes)
             tier, top3 = res["tier"], res["top3"]
             st.subheader("Identification")
             st.dataframe(pd.DataFrame(top3, columns=["Species", "Probability"])
@@ -73,12 +86,24 @@ with tab_report:
                 st.success(f"High confidence: **{species}** ({top3[0][1]:.0%})")
             elif tier == "medium":
                 st.warning("Medium confidence. Please confirm the species.")
-                species = st.radio("Which of these is it?", [n for n, _ in top3], index=0)
+                choice = st.radio("Which of these is it?",
+                                  [n for n, _ in top3] + [NONE_OF_THESE],
+                                  index=None, key=f"radio_{photo_id}")
+                if choice == NONE_OF_THESE:
+                    species = st.selectbox("Pick the species yourself", sorted(classes),
+                                           index=None, placeholder="Choose a species",
+                                           key=f"med_manual_{photo_id}")
+                else:
+                    species = choice
+                if species is None:
+                    st.info("Choose a species to see the advisory and log a report.")
             else:
                 st.error("Low confidence. Retake the photo (leaves and flowers, good light), "
                          "or pick the species yourself.")
-                if st.checkbox("I'll pick the species manually"):
-                    species = st.selectbox("Species", sorted(classes))
+                if st.checkbox("I'll pick the species manually", key=f"low_chk_{photo_id}"):
+                    species = st.selectbox("Species", sorted(classes), index=None,
+                                           placeholder="Choose a species",
+                                           key=f"low_manual_{photo_id}")
 
             if species:
                 key = (species, use_llm)
@@ -120,5 +145,16 @@ with tab_map:
         summ[["zone_id", "trail", "zone_name", "level", "reports", "damaged_reports",
               "species_affected", "butterflies_at_risk", "top_species", "last_report"]],
         hide_index=True, use_container_width=True)
-    st.caption("Damage is reported by users, not detected by the model. "
+    export_cols = ["id", "timestamp", "zone_id", "species", "predicted", "confidence",
+                   "tier", "damaged", "image_name", "is_demo"]
+    d1, d2 = st.columns(2)
+    d1.download_button("Download incidents (CSV)",
+                       df[export_cols].to_csv(index=False).encode("utf-8"),
+                       file_name="incidents.csv", mime="text/csv")
+    d2.download_button("Download zone summary (CSV)",
+                       summ.drop(columns=["color", "size"]).to_csv(index=False).encode("utf-8"),
+                       file_name="zone_summary.csv", mime="text/csv")
+    st.caption("Exports include the model prediction, confidence and tier next to the "
+               "confirmed species; filter on `is_demo` before any analysis. "
+               "Damage is reported by users, not detected by the model. "
                "'Butterflies at risk' = butterflies recorded as hosts of the damaged plants.")

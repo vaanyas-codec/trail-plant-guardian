@@ -1,0 +1,19 @@
+# Runtime data (created by the app; may contain user reports)
+incidents.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Raw dataset (download separately, see README)
+data/
